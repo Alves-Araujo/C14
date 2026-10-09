@@ -256,9 +256,9 @@ public BuscaInimigo(InimigoService inimigoService) {
           "Porque não fornece uma verificação objetiva e repetitiva do comportamento do software.",
           "Porque é uma técnica exclusiva de testes de regressão."
         ],
-        correta: 1,
-        explicacao: "Slide da Aula 06: <i>\"Mensagens na tela precisam ser validadas manualmente e depois serão apagadas. Os testes permanecerão na suíte.\"</i> Teste automatizado é <b>auto-verificável</b> (Self-checking do FIRST).",
-        atencao: "A alternativa C também descreve um problema real. A resposta segue a justificativa do material, que é a validação manual."
+        correta: 2,
+        explicacao: "Um teste automatizado verifica o resultado sozinho, de forma <b>objetiva e repetível</b>: fica verde ou vermelho, sem ninguém precisar interpretar (Self-checking e Repeatable do FIRST). Mensagens na tela não verificam nada, só mostram valores. O slide da Aula 06 completa: <i>\"Mensagens na tela precisam ser validadas manualmente e depois serão apagadas. Os testes permanecerão na suíte.\"</i>",
+        atencao: "A alternativa B parece certa porque repete o slide, mas o gabarito oficial é a C. A validação manual é uma consequência; o motivo é a falta de verificação objetiva e repetível."
       }
     ]
   },

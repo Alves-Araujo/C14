@@ -827,8 +827,223 @@
     montar(false);
   }
 
+  /* ================= DEVOPS (treino de termos) ================= */
+  const DV_GRUPOS = [
+    { id: "todos", nome: "Tudo", h: 255 },
+    { id: "rdd", nome: "Release × Deploy × Delivery", h: 160 },
+    { id: "cicd", nome: "CI × CD", h: 200 },
+    { id: "extras", nome: "Flags, canário, pipeline", h: 330 }
+  ];
+  let dvModo = store.get("dvModo", "treinar");
+  const dv = { grupo: "todos", fila: [], atual: null, q: null, respondida: false, ok: 0, err: 0, seq: 0, total: 0 };
+
+  function renderDevops() {
+    const el = $("#view-devops");
+    el.innerHTML = `
+<div class="page-head reveal">
+  <span class="eyebrow">Release · Deploy · Delivery · CI/CD</span>
+  <h2>Treino DevOps</h2>
+  <p>Questões de cenário só sobre os termos que mais se confundem. As que você errar voltam logo depois até você acertar.</p>
+</div>
+<div class="toolbar reveal">
+  <div class="seg" id="segDv">
+    <button data-id="treinar" class="${dvModo === "treinar" ? "active" : ""}">Treinar<small>${DEVOPS_QUIZ.length} questões</small></button>
+    <button data-id="cola" class="${dvModo === "cola" ? "active" : ""}">Cola<small>diferenças e palavras-chave</small></button>
+    <span class="seg-pill"></span>
+  </div>
+</div>
+<div id="dvBody"></div>`;
+    segmented($("#segDv", el), (id) => { dvModo = id; store.set("dvModo", id); showDevops(); });
+    showDevops();
+    observe(el);
+  }
+
+  function showDevops() {
+    document.onkeydown = null;
+    if (dvModo === "cola") dvCola(); else dvTreinar();
+  }
+
+  function dvCola() {
+    const body = $("#dvBody");
+    body.innerHTML = `
+<div class="card dv-flow fc-enter" style="--h:200">
+  <h3>Modelo mental: do commit ao cliente</h3>
+  <div class="flow"><span>Commit</span><i>integra →</i><span>CI</span><i>gera →</i><span>Release</span><i>pronta, alguém autoriza →</i><span>Delivery</span><i>instala →</i><span>Deploy</span></div>
+  <p>Pergunte-se: <b>gerou</b> a versão? É <b>Release</b>. Está <b>pronta esperando alguém autorizar</b>? É <b>Delivery</b>. Foi <b>instalada em produção</b> e o cliente já usa? É <b>Deploy</b>.</p>
+</div>
+<div class="term-grid">
+  ${DEVOPS_TERMOS.map((t) => `
+  <div class="card term-card reveal" style="--h:${t.hue}">
+    <div class="term-head"><b>${t.nome}</b><small>${t.pt}</small></div>
+    <p>${t.def}</p>
+    <div class="chips">${t.chave.map((c) => `<span>${c}</span>`).join("")}</div>
+    <p class="term-ex">${t.ex}</p>
+  </div>`).join("")}
+</div>
+<div class="card dv-note reveal" style="--h:45">
+  <h3>Truques para não errar</h3>
+  <ul>
+    <li><b>CI</b>: o <b>I</b> é de <b>Integrar</b>. "Integrar código com frequência" é sempre CI, <u>nunca</u> CD.</li>
+    <li><b>CD</b> = Continuous <b>D</b>eployment ou <b>D</b>elivery: trata de levar o commit até <b>produção</b>.</li>
+    <li>Deploy<b>ment</b> é automático, sem ninguém. <b>Delivery</b> tem uma pessoa autorizando.</li>
+    <li>Web usa Continuous <b>Deployment</b>. Apps móveis, jogos, desktop e drivers usam Continuous <b>Delivery</b>.</li>
+    <li><b>Release</b> não coloca nada no ar: só <b>gera</b> a versão. "Disponível imediatamente" é <b>Deploy</b>.</li>
+    <li>Os 3 pilares do DevOps são <b>Release, Deploy e Delivery</b>, e não "CI e CD".</li>
+  </ul>
+</div>
+<div class="card dv-note reveal" style="--h:330">
+  <h3>Termos vizinhos</h3>
+  <div class="grid">
+    <div><b>Feature flag</b><span>Booleano que desliga código incompleto. Permite integrar no main sem branch.</span></div>
+    <div><b>Release canário</b><span>Libera para um grupo pequeno de usuários primeiro; depois amplia.</span></div>
+    <div><b>Teste A/B</b><span>Duas versões para grupos diferentes, para ver qual traz mais valor.</span></div>
+    <div><b>TBD</b><span>Trunk Based Development: todos no main, sem branches longos. Combina com CI.</span></div>
+    <div><b>Merge hell</b><span>Conflitos de branches que ficaram muito tempo isolados.</span></div>
+    <div><b>Pipeline</b><span>Encanamento automático do commit à produção. Gatilho automático.</span></div>
+  </div>
+</div>`;
+    observe(body);
+  }
+
+  function dvNovaRodada() {
+    const idx = DEVOPS_QUIZ.map((_, i) => i).filter((i) => dv.grupo === "todos" || DEVOPS_QUIZ[i].grupo === dv.grupo);
+    dv.fila = shuffle(idx);
+    dv.total = idx.length;
+    dv.ok = 0; dv.err = 0; dv.seq = 0;
+    dv.atual = null; dv.respondida = false;
+  }
+
+  function dvProxima() {
+    dv.atual = dv.fila.shift();
+    dv.respondida = false;
+    if (dv.atual == null) { dv.q = null; return; }
+    const base = DEVOPS_QUIZ[dv.atual];
+    // embaralha as alternativas a cada aparição (V/F fica na ordem)
+    const ordem = base.opcoes.length > 2 ? shuffle(base.opcoes.map((_, k) => k)) : base.opcoes.map((_, k) => k);
+    dv.q = { ...base, opcoes: ordem.map((k) => base.opcoes[k]), correta: ordem.indexOf(base.correta) };
+  }
+
+  function dvTreinar() {
+    const body = $("#dvBody");
+    if (!dv.fila.length && dv.atual == null) dvNovaRodada();
+    if (dv.atual == null || dv.respondida) dvProxima();
+
+    body.innerHTML = `
+<div class="filters" id="dvGrupos">${DV_GRUPOS.map((g) => `<button class="chip${g.id === dv.grupo ? " active" : ""}" data-g="${g.id}" style="--h:${g.h}">${g.nome}</button>`).join("")}</div>
+<div class="sim-wrap">
+  <div class="card dv-stats">
+    <div><b class="ok" id="dvOk"></b><span>acertos</span></div>
+    <div><b class="bad" id="dvErr"></b><span>erros</span></div>
+    <div><b id="dvSeq"></b><span>sequência</span></div>
+    <div><b id="dvRec"></b><span>recorde</span></div>
+    <div class="dv-prog"><div class="bar-label"><span>Rodada</span><b id="dvFalta"></b></div><div class="progress"><i id="dvBar"></i></div></div>
+  </div>
+  <div id="dvFraco"></div>
+  <div class="sim-stage" id="dvStage"></div>
+  <div class="sim-nav"><button class="btn primary" id="dvNext" hidden>Próxima ${ICON.arrow}</button></div>
+  <p style="text-align:center;color:var(--faint);font-size:13px;margin-top:14px">Atalhos: <span class="kbd">A</span>–<span class="kbd">D</span> respondem · <span class="kbd">Enter</span> avança</p>
+</div>`;
+
+    const stage = $("#dvStage", body), next = $("#dvNext", body);
+
+    function placar() {
+      const feitas = dv.total - dv.fila.length - (dv.respondida || dv.atual == null ? 0 : 1);
+      $("#dvOk", body).textContent = dv.ok;
+      $("#dvErr", body).textContent = dv.err;
+      $("#dvSeq", body).textContent = dv.seq;
+      $("#dvRec", body).textContent = store.get("dvRecorde", 0);
+      $("#dvFalta", body).textContent = `${Math.max(0, feitas)}/${dv.total}`;
+      $("#dvBar", body).style.width = (Math.max(0, feitas) / dv.total) * 100 + "%";
+      const erros = store.get("dvErros", {});
+      const top = Object.entries(erros).sort((a, b) => b[1] - a[1]).slice(0, 4);
+      $("#dvFraco", body).innerHTML = top.length
+        ? `<div class="dv-weak"><span>Você mais erra:</span>${top.map(([t, n]) => `<em>${DEVOPS_NOMES[t] || t} <b>${n}</b></em>`).join("")}<button class="link-btn" id="dvZerar">zerar</button></div>`
+        : "";
+      const z = $("#dvZerar", body);
+      if (z) z.addEventListener("click", () => { store.set("dvErros", {}); placar(); toast("Estatísticas de erro zeradas"); });
+    }
+
+    function mostrar() {
+      if (dv.atual == null) return fim();
+      stage.innerHTML = questionHTML(dv.q, dv.total - dv.fila.length, [{ txt: DV_GRUPOS.find((g) => g.id === dv.q.grupo).nome, h: DV_GRUPOS.find((g) => g.id === dv.q.grupo).h }]);
+      const card = $(".q-card", stage);
+      card.classList.add("in");
+      $(".q-actions", card).remove();
+      next.hidden = true;
+      card.addEventListener("click", (e) => {
+        const b = e.target.closest(".opt");
+        if (b && !b.disabled) responder(+b.dataset.k);
+      });
+      placar();
+    }
+
+    function responder(k) {
+      if (dv.respondida || dv.atual == null || k >= dv.q.opcoes.length) return;
+      dv.respondida = true;
+      const certo = k === dv.q.correta;
+      if (certo) {
+        dv.ok++; dv.seq++;
+        if (dv.seq > store.get("dvRecorde", 0)) store.set("dvRecorde", dv.seq);
+      } else {
+        dv.err++; dv.seq = 0;
+        // a questão errada volta daqui a 3 questões
+        dv.fila.splice(Math.min(3, dv.fila.length), 0, dv.atual);
+        const erros = store.get("dvErros", {});
+        erros[dv.q.termo] = (erros[dv.q.termo] || 0) + 1;
+        store.set("dvErros", erros);
+      }
+      markAnswer($(".q-card", stage), dv.q, k, true);
+      if (!certo) $(".explain-inner", stage).insertAdjacentHTML("beforeend", `<div class="attn"><b>Ela vai voltar</b> daqui a pouco para você fixar.</div>`);
+      placar();
+      next.innerHTML = dv.fila.length ? `Próxima ${ICON.arrow}` : `Ver resultado ${ICON.arrow}`;
+      next.hidden = false;
+      next.focus({ preventScroll: true });
+    }
+
+    function avancar() {
+      if (!dv.respondida) return;
+      const card = $(".q-card", stage);
+      card.classList.add("leaving");
+      setTimeout(() => { dvProxima(); mostrar(); }, reduceMotion ? 0 : 300);
+    }
+
+    function fim() {
+      document.onkeydown = null;
+      next.hidden = true;
+      const tentativas = dv.ok + dv.err;
+      const pct = tentativas ? Math.round((dv.total / tentativas) * 100) : 100;
+      placar();
+      stage.innerHTML = `
+<div class="card result fc-enter">
+  ${ring(pct)}
+  <h3>Rodada completa!</h3>
+  <p>${dv.total} questões dominadas com ${dv.err} erro${dv.err === 1 ? "" : "s"} no caminho. ${dv.err === 0 ? "Perfeito, sem errar nenhuma." : "Faça outra rodada até zerar os erros."}</p>
+  <div class="row"><button class="btn primary" id="dvDeNovo">${ICON.shuffle} Nova rodada</button></div>
+</div>`;
+      animateRings(stage);
+      if (dv.err === 0) confetti();
+      $("#dvDeNovo", stage).addEventListener("click", () => { dvNovaRodada(); dvTreinar(); });
+    }
+
+    $("#dvGrupos", body).addEventListener("click", (e) => {
+      const c = e.target.closest(".chip");
+      if (!c || c.dataset.g === dv.grupo) return;
+      dv.grupo = c.dataset.g;
+      dvNovaRodada();
+      dvTreinar();
+    });
+    next.addEventListener("click", avancar);
+    document.onkeydown = (e) => {
+      if (e.target.matches("input, textarea")) return;
+      const idx = "abcd".indexOf(e.key.toLowerCase());
+      if (idx >= 0 && !dv.respondida) responder(idx);
+      else if (e.key === "Enter" && dv.respondida) { e.preventDefault(); avancar(); }
+    };
+    mostrar();
+  }
+
   /* ================= Roteador ================= */
-  const VIEWS = { inicio: renderInicio, listas: renderListas, resumo: renderResumo, exercicios: renderExercicios };
+  const VIEWS = { inicio: renderInicio, listas: renderListas, resumo: renderResumo, exercicios: renderExercicios, devops: renderDevops };
   const feitos = {};
   let viewAtual = null;
 
@@ -837,12 +1052,13 @@
     const view = VIEWS[v] ? v : "inicio";
     if (view === viewAtual) return;
     viewAtual = view;
-    if (view !== "exercicios") document.onkeydown = null;
+    document.onkeydown = null;
     $$(".view").forEach((s) => s.classList.toggle("active", s.dataset.view === view));
     $$(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
     movePill($(".nav"));
     if (view === "inicio" || !feitos[view]) { VIEWS[view](); feitos[view] = true; }
     else if (view === "exercicios") showModo();
+    else if (view === "devops") showDevops();
     requestAnimationFrame(refreshPills);
     scrollTo({ top: 0, behavior: "auto" });
   }

@@ -448,9 +448,9 @@ public void testaRoboDesconectado() {
           "Teste unitário, TDD e Teste Mock.", "CI e CD.", "Implantação, entrega e desenvolvimento.", "Release, Deploy e Delivery."
         ], correta: 3,
         explicacao: "Aula 09, \"Conceitos básicos do DevOps\": <b>Liberação (Release), Implantação (Deploy) e Entrega (Delivery)</b>. A alternativa C troca a liberação por \"desenvolvimento\"." },
-      { pts: 5, tag: "Pipeline", enunciado: "Atacar as restrições/problemas existentes durante a criação de um <i>pipeline</i> é o mesmo que automatizar os processos.", opcoes: ["Falso.", "Verdadeiro."], correta: 1,
-        explicacao: "As restrições do pipeline (criação de ambientes, deploy, testes) são atacadas principalmente <b>automatizando</b> esses processos.",
-        atencao: "Esse conteúdo não está nos slides enviados (vem do livro <i>Jornada Ágil DevOps</i>). Confira com o professor." },
+      { pts: 5, tag: "Pipeline", enunciado: "Atacar as restrições/problemas existentes durante a criação de um <i>pipeline</i> é o mesmo que automatizar os processos.", opcoes: ["Falso.", "Verdadeiro."], correta: 0,
+        explicacao: "Automatizar é uma das formas de atacar as restrições, mas <b>não é a mesma coisa</b>. Atacar uma restrição também pode exigir mudar a arquitetura (desacoplar), reorganizar o time, criar ambientes sob demanda ou otimizar os testes. O \"é o mesmo que\" torna a frase falsa.",
+        atencao: "Gabarito oficial: Falso. Desconfie de frases que igualam dois conceitos (\"é o mesmo que\")." },
       { pts: 5, tag: "Pipeline", enunciado: "Uma forma de otimizar um <i>pipeline</i> é:", opcoes: [
           "Não automatizar processos.", "Aumentar o gerenciamento manual de processos.", "Reduzir o tempo de execução.", "Garantir 100% de entrega."
         ], correta: 2,

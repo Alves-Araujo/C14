@@ -835,7 +835,6 @@
     { id: "extras", nome: "Flags, canário, pipeline", h: 330 }
   ];
   let dvModo = store.get("dvModo", "treinar");
-  const dv = { grupo: "todos", fila: [], atual: null, q: null, respondida: false, ok: 0, err: 0, seq: 0, total: 0 };
 
   function renderDevops() {
     const el = $("#view-devops");
@@ -905,145 +904,282 @@
     observe(body);
   }
 
-  function dvNovaRodada() {
-    const idx = DEVOPS_QUIZ.map((_, i) => i).filter((i) => dv.grupo === "todos" || DEVOPS_QUIZ[i].grupo === dv.grupo);
-    dv.fila = shuffle(idx);
-    dv.total = idx.length;
-    dv.ok = 0; dv.err = 0; dv.seq = 0;
-    dv.atual = null; dv.respondida = false;
-  }
+  /* ================= Motor de treino (abas DevOps e Código) ================= */
+  // Uma questão por vez, alternativas embaralhadas; as erradas voltam 3 questões depois até serem acertadas.
+  function criarTreino(cfg) {
+    const st = { grupo: "todos", fila: [], atual: null, q: null, respondida: false, ok: 0, err: 0, seq: 0, total: 0 };
+    const grupoDe = (id) => cfg.grupos.find((g) => g.id === id);
+    const kRecorde = cfg.chave + "Recorde", kErros = cfg.chave + "Erros";
 
-  function dvProxima() {
-    dv.atual = dv.fila.shift();
-    dv.respondida = false;
-    if (dv.atual == null) { dv.q = null; return; }
-    const base = DEVOPS_QUIZ[dv.atual];
-    // embaralha as alternativas a cada aparição (V/F fica na ordem)
-    const ordem = base.opcoes.length > 2 ? shuffle(base.opcoes.map((_, k) => k)) : base.opcoes.map((_, k) => k);
-    dv.q = { ...base, opcoes: ordem.map((k) => base.opcoes[k]), correta: ordem.indexOf(base.correta) };
-  }
+    function novaRodada() {
+      const idx = cfg.quiz.map((_, i) => i).filter((i) => st.grupo === "todos" || cfg.quiz[i].grupo === st.grupo);
+      Object.assign(st, { fila: shuffle(idx), total: idx.length, ok: 0, err: 0, seq: 0, atual: null, respondida: false });
+    }
 
-  function dvTreinar() {
-    const body = $("#dvBody");
-    if (!dv.fila.length && dv.atual == null) dvNovaRodada();
-    if (dv.atual == null || dv.respondida) dvProxima();
+    function proxima() {
+      st.atual = st.fila.shift();
+      st.respondida = false;
+      if (st.atual == null) { st.q = null; return; }
+      const base = cfg.quiz[st.atual];
+      // V/F fica na ordem; o resto é embaralhado a cada aparição
+      const ordem = base.opcoes.length > 2 ? shuffle(base.opcoes.map((_, k) => k)) : base.opcoes.map((_, k) => k);
+      st.q = { ...base, opcoes: ordem.map((k) => base.opcoes[k]), correta: ordem.indexOf(base.correta) };
+    }
 
-    body.innerHTML = `
-<div class="filters" id="dvGrupos">${DV_GRUPOS.map((g) => `<button class="chip${g.id === dv.grupo ? " active" : ""}" data-g="${g.id}" style="--h:${g.h}">${g.nome}</button>`).join("")}</div>
+    return function render(body) {
+      if (!st.fila.length && st.atual == null) novaRodada();
+      if (st.atual == null || st.respondida) proxima();
+
+      body.innerHTML = `
+<div class="filters tr-grupos">${cfg.grupos.map((g) => `<button class="chip${g.id === st.grupo ? " active" : ""}" data-g="${g.id}" style="--h:${g.h}">${g.nome}</button>`).join("")}</div>
 <div class="sim-wrap">
   <div class="card dv-stats">
-    <div><b class="ok" id="dvOk"></b><span>acertos</span></div>
-    <div><b class="bad" id="dvErr"></b><span>erros</span></div>
-    <div><b id="dvSeq"></b><span>sequência</span></div>
-    <div><b id="dvRec"></b><span>recorde</span></div>
-    <div class="dv-prog"><div class="bar-label"><span>Rodada</span><b id="dvFalta"></b></div><div class="progress"><i id="dvBar"></i></div></div>
+    <div><b class="ok tr-ok"></b><span>acertos</span></div>
+    <div><b class="bad tr-err"></b><span>erros</span></div>
+    <div><b class="tr-seq"></b><span>sequência</span></div>
+    <div><b class="tr-rec"></b><span>recorde</span></div>
+    <div class="dv-prog"><div class="bar-label"><span>Rodada</span><b class="tr-falta"></b></div><div class="progress"><i class="tr-bar"></i></div></div>
   </div>
-  <div id="dvFraco"></div>
-  <div class="sim-stage" id="dvStage"></div>
-  <div class="sim-nav"><button class="btn primary" id="dvNext" hidden>Próxima ${ICON.arrow}</button></div>
-  <p style="text-align:center;color:var(--faint);font-size:13px;margin-top:14px">Atalhos: <span class="kbd">A</span>–<span class="kbd">D</span> respondem · <span class="kbd">Enter</span> avança</p>
+  <div class="tr-fraco"></div>
+  <div class="sim-stage tr-stage"></div>
+  <div class="sim-nav"><button class="btn primary tr-next" hidden>Próxima ${ICON.arrow}</button></div>
+  <p style="text-align:center;color:var(--faint);font-size:13px;margin-top:14px">Atalhos: <span class="kbd">A</span>–<span class="kbd">E</span> respondem · <span class="kbd">Enter</span> avança</p>
 </div>`;
 
-    const stage = $("#dvStage", body), next = $("#dvNext", body);
+      const stage = $(".tr-stage", body), next = $(".tr-next", body);
 
-    function placar() {
-      const feitas = dv.total - dv.fila.length - (dv.respondida || dv.atual == null ? 0 : 1);
-      $("#dvOk", body).textContent = dv.ok;
-      $("#dvErr", body).textContent = dv.err;
-      $("#dvSeq", body).textContent = dv.seq;
-      $("#dvRec", body).textContent = store.get("dvRecorde", 0);
-      $("#dvFalta", body).textContent = `${Math.max(0, feitas)}/${dv.total}`;
-      $("#dvBar", body).style.width = (Math.max(0, feitas) / dv.total) * 100 + "%";
-      const erros = store.get("dvErros", {});
-      const top = Object.entries(erros).sort((a, b) => b[1] - a[1]).slice(0, 4);
-      $("#dvFraco", body).innerHTML = top.length
-        ? `<div class="dv-weak"><span>Você mais erra:</span>${top.map(([t, n]) => `<em>${DEVOPS_NOMES[t] || t} <b>${n}</b></em>`).join("")}<button class="link-btn" id="dvZerar">zerar</button></div>`
-        : "";
-      const z = $("#dvZerar", body);
-      if (z) z.addEventListener("click", () => { store.set("dvErros", {}); placar(); toast("Estatísticas de erro zeradas"); });
-    }
-
-    function mostrar() {
-      if (dv.atual == null) return fim();
-      stage.innerHTML = questionHTML(dv.q, dv.total - dv.fila.length, [{ txt: DV_GRUPOS.find((g) => g.id === dv.q.grupo).nome, h: DV_GRUPOS.find((g) => g.id === dv.q.grupo).h }]);
-      const card = $(".q-card", stage);
-      card.classList.add("in");
-      $(".q-actions", card).remove();
-      next.hidden = true;
-      card.addEventListener("click", (e) => {
-        const b = e.target.closest(".opt");
-        if (b && !b.disabled) responder(+b.dataset.k);
-      });
-      placar();
-    }
-
-    function responder(k) {
-      if (dv.respondida || dv.atual == null || k >= dv.q.opcoes.length) return;
-      dv.respondida = true;
-      const certo = k === dv.q.correta;
-      if (certo) {
-        dv.ok++; dv.seq++;
-        if (dv.seq > store.get("dvRecorde", 0)) store.set("dvRecorde", dv.seq);
-      } else {
-        dv.err++; dv.seq = 0;
-        // a questão errada volta daqui a 3 questões
-        dv.fila.splice(Math.min(3, dv.fila.length), 0, dv.atual);
-        const erros = store.get("dvErros", {});
-        erros[dv.q.termo] = (erros[dv.q.termo] || 0) + 1;
-        store.set("dvErros", erros);
+      function placar() {
+        const feitas = Math.max(0, st.total - st.fila.length - (st.respondida || st.atual == null ? 0 : 1));
+        $(".tr-ok", body).textContent = st.ok;
+        $(".tr-err", body).textContent = st.err;
+        $(".tr-seq", body).textContent = st.seq;
+        $(".tr-rec", body).textContent = store.get(kRecorde, 0);
+        $(".tr-falta", body).textContent = `${feitas}/${st.total}`;
+        $(".tr-bar", body).style.width = (feitas / st.total) * 100 + "%";
+        const top = Object.entries(store.get(kErros, {})).sort((a, b) => b[1] - a[1]).slice(0, 4);
+        $(".tr-fraco", body).innerHTML = top.length
+          ? `<div class="dv-weak"><span>Você mais erra:</span>${top.map(([t, n]) => `<em>${cfg.nomes[t] || t} <b>${n}</b></em>`).join("")}<button class="link-btn tr-zerar">zerar</button></div>`
+          : "";
+        const z = $(".tr-zerar", body);
+        if (z) z.addEventListener("click", () => { store.set(kErros, {}); placar(); toast("Estatísticas de erro zeradas"); });
       }
-      markAnswer($(".q-card", stage), dv.q, k, true);
-      if (!certo) $(".explain-inner", stage).insertAdjacentHTML("beforeend", `<div class="attn"><b>Ela vai voltar</b> daqui a pouco para você fixar.</div>`);
-      placar();
-      next.innerHTML = dv.fila.length ? `Próxima ${ICON.arrow}` : `Ver resultado ${ICON.arrow}`;
-      next.hidden = false;
-      next.focus({ preventScroll: true });
-    }
 
-    function avancar() {
-      if (!dv.respondida) return;
-      const card = $(".q-card", stage);
-      card.classList.add("leaving");
-      setTimeout(() => { dvProxima(); mostrar(); }, reduceMotion ? 0 : 300);
-    }
+      function mostrar() {
+        if (st.atual == null) return fim();
+        const g = grupoDe(st.q.grupo);
+        stage.innerHTML = questionHTML(st.q, st.total - st.fila.length, [{ txt: g.nome, h: g.h }]);
+        const card = $(".q-card", stage);
+        card.classList.add("in");
+        $(".q-actions", card).remove();
+        next.hidden = true;
+        card.addEventListener("click", (e) => {
+          const b = e.target.closest(".opt");
+          if (b && !b.disabled) responder(+b.dataset.k);
+        });
+        placar();
+      }
 
-    function fim() {
-      document.onkeydown = null;
-      next.hidden = true;
-      const tentativas = dv.ok + dv.err;
-      const pct = tentativas ? Math.round((dv.total / tentativas) * 100) : 100;
-      placar();
-      stage.innerHTML = `
+      function responder(k) {
+        if (st.respondida || st.atual == null || k >= st.q.opcoes.length) return;
+        st.respondida = true;
+        const certo = k === st.q.correta;
+        if (certo) {
+          st.ok++; st.seq++;
+          if (st.seq > store.get(kRecorde, 0)) store.set(kRecorde, st.seq);
+        } else {
+          st.err++; st.seq = 0;
+          st.fila.splice(Math.min(3, st.fila.length), 0, st.atual);
+          const erros = store.get(kErros, {});
+          erros[st.q.termo] = (erros[st.q.termo] || 0) + 1;
+          store.set(kErros, erros);
+        }
+        markAnswer($(".q-card", stage), st.q, k, true);
+        if (!certo) $(".explain-inner", stage).insertAdjacentHTML("beforeend", `<div class="attn"><b>Ela vai voltar</b> daqui a pouco para você fixar.</div>`);
+        placar();
+        next.innerHTML = st.fila.length ? `Próxima ${ICON.arrow}` : `Ver resultado ${ICON.arrow}`;
+        next.hidden = false;
+        next.focus({ preventScroll: true });
+      }
+
+      function avancar() {
+        if (!st.respondida) return;
+        $(".q-card", stage).classList.add("leaving");
+        setTimeout(() => {
+          proxima(); mostrar();
+          const topo = body.getBoundingClientRect().top + scrollY - 90;
+          if (scrollY > topo) scrollTo({ top: topo, behavior: reduceMotion ? "auto" : "smooth" });
+        }, reduceMotion ? 0 : 300);
+      }
+
+      function fim() {
+        document.onkeydown = null;
+        next.hidden = true;
+        const tentativas = st.ok + st.err;
+        const pct = tentativas ? Math.round((st.total / tentativas) * 100) : 100;
+        placar();
+        stage.innerHTML = `
 <div class="card result fc-enter">
   ${ring(pct)}
   <h3>Rodada completa!</h3>
-  <p>${dv.total} questões dominadas com ${dv.err} erro${dv.err === 1 ? "" : "s"} no caminho. ${dv.err === 0 ? "Perfeito, sem errar nenhuma." : "Faça outra rodada até zerar os erros."}</p>
-  <div class="row"><button class="btn primary" id="dvDeNovo">${ICON.shuffle} Nova rodada</button></div>
+  <p>${st.total} questões dominadas com ${st.err} erro${st.err === 1 ? "" : "s"} no caminho. ${st.err === 0 ? "Perfeito, sem errar nenhuma." : "Faça outra rodada até zerar os erros."}</p>
+  <div class="row"><button class="btn primary tr-denovo">${ICON.shuffle} Nova rodada</button></div>
 </div>`;
-      animateRings(stage);
-      if (dv.err === 0) confetti();
-      $("#dvDeNovo", stage).addEventListener("click", () => { dvNovaRodada(); dvTreinar(); });
-    }
+        animateRings(stage);
+        if (st.err === 0) confetti();
+        $(".tr-denovo", stage).addEventListener("click", () => { novaRodada(); render(body); });
+      }
 
-    $("#dvGrupos", body).addEventListener("click", (e) => {
-      const c = e.target.closest(".chip");
-      if (!c || c.dataset.g === dv.grupo) return;
-      dv.grupo = c.dataset.g;
-      dvNovaRodada();
-      dvTreinar();
-    });
-    next.addEventListener("click", avancar);
-    document.onkeydown = (e) => {
-      if (e.target.matches("input, textarea")) return;
-      const idx = "abcd".indexOf(e.key.toLowerCase());
-      if (idx >= 0 && !dv.respondida) responder(idx);
-      else if (e.key === "Enter" && dv.respondida) { e.preventDefault(); avancar(); }
+      $(".tr-grupos", body).addEventListener("click", (e) => {
+        const c = e.target.closest(".chip");
+        if (!c || c.dataset.g === st.grupo) return;
+        st.grupo = c.dataset.g;
+        novaRodada();
+        render(body);
+      });
+      next.addEventListener("click", avancar);
+      document.onkeydown = (e) => {
+        if (e.target.matches("input, textarea")) return;
+        const idx = "abcde".indexOf(e.key.toLowerCase());
+        if (idx >= 0 && !st.respondida) responder(idx);
+        else if (e.key === "Enter" && st.respondida) { e.preventDefault(); avancar(); }
+      };
+      mostrar();
     };
-    mostrar();
+  }
+
+  const treinoDevops = criarTreino({ chave: "dv", quiz: DEVOPS_QUIZ, nomes: DEVOPS_NOMES, grupos: DV_GRUPOS });
+  const dvTreinar = () => treinoDevops($("#dvBody"));
+
+  /* ================= CÓDIGO (análise de código) ================= */
+  const CD_GRUPOS = [
+    { id: "todos", nome: "Tudo", h: 255 },
+    { id: "junit", nome: "Fluxo do teste (@Before)", h: 140 },
+    { id: "asserts", nome: "Asserts", h: 200 },
+    { id: "mock", nome: "Mock e injeção", h: 290 },
+    { id: "tdd", nome: "Padrões do TDD", h: 0 },
+    { id: "refactor", nome: "Refactoring", h: 100 },
+    { id: "build", nome: "Maven e Git", h: 25 }
+  ];
+  let cdModo = store.get("cdModo", "treinar");
+  const treinoCodigo = criarTreino({ chave: "cd", quiz: CODIGO_QUIZ, nomes: CODIGO_NOMES, grupos: CD_GRUPOS });
+
+  function renderCodigo() {
+    const el = $("#view-codigo");
+    el.innerHTML = `
+<div class="page-head reveal">
+  <span class="eyebrow">Cai muito na prova</span>
+  <h2>Análise de código</h2>
+  <p>${CODIGO_QUIZ.length} questões em que você precisa ler o código: o que passa, o que falha, qual padrão, qual refactoring. As que você errar voltam logo depois.</p>
+</div>
+<div class="toolbar reveal">
+  <div class="seg" id="segCd">
+    <button data-id="treinar" class="${cdModo === "treinar" ? "active" : ""}">Treinar<small>${CODIGO_QUIZ.length} questões</small></button>
+    <button data-id="refactor" class="${cdModo === "refactor" ? "active" : ""}">Qual refactoring?<small>${REFACTOR_QUIZ.length} antes → depois</small></button>
+    <button data-id="roteiro" class="${cdModo === "roteiro" ? "active" : ""}">Como analisar<small>roteiro e pegadinhas</small></button>
+    <span class="seg-pill"></span>
+  </div>
+</div>
+<div id="cdBody"></div>`;
+    segmented($("#segCd", el), (id) => { cdModo = id; store.set("cdModo", id); showCodigo(); });
+    showCodigo();
+    observe(el);
+  }
+
+  function showCodigo() {
+    document.onkeydown = null;
+    if (cdModo === "roteiro") cdRoteiro();
+    else if (cdModo === "refactor") cdRefactor();
+    else treinoCodigo($("#cdBody"));
+  }
+
+  const RF_GRUPOS = [
+    { id: "todos", nome: "Tudo", h: 100 },
+    { id: "extinl", nome: "Extração × Inline", h: 140 },
+    { id: "mov", nome: "Movimentação · Pull Up · Push Down", h: 200 },
+    { id: "classe", nome: "Extração de classe", h: 290 },
+    { id: "rename", nome: "Renomeação", h: 45 },
+    { id: "nao", nome: "Não é refactoring", h: 0 }
+  ];
+  const treinoRefactor = criarTreino({ chave: "rf", quiz: REFACTOR_QUIZ, nomes: REFACTOR_NOMES, grupos: RF_GRUPOS });
+
+  function cdRefactor() {
+    const body = $("#cdBody");
+    body.innerHTML = `
+<details class="card dv-note rf-dicas" style="--h:100">
+  <summary>Como reconhecer cada refactoring <small>(toque para abrir)</small></summary>
+  <table class="cmp">
+    <tr><th>Extração de método</th><td>O DEPOIS tem um método <b>a mais</b>; o trecho sumiu de onde estava e virou uma chamada.</td></tr>
+    <tr><th>Inline de método</th><td>O DEPOIS tem um método <b>a menos</b>; o corpo dele foi colado no lugar da chamada.</td></tr>
+    <tr><th>Movimentação</th><td>O <b>mesmo método</b> mudou de classe, <b>sem herança</b> entre elas (geralmente para a classe cujos dados ele usa).</td></tr>
+    <tr><th>Pull Up</th><td>Das <b>subclasses</b> (<code>extends</code>) para a <b>superclasse</b>. Sobe.</td></tr>
+    <tr><th>Push Down</th><td>Da <b>superclasse</b> para a <b>subclasse</b> que usa. Desce.</td></tr>
+    <tr><th>Extração de classe</th><td>Surgiu uma <b>classe nova</b> com um grupo de atributos/métodos que saíram de uma classe grande.</td></tr>
+    <tr><th>Renomeação</th><td>Só mudaram <b>nomes</b>; a lógica é idêntica.</td></tr>
+    <tr><th>Não é refactoring</th><td>Algum <b>resultado</b> mudou (bug corrigido, regra nova, funcionalidade nova).</td></tr>
+  </table>
+</details>
+<div class="rf-treino"></div>`;
+    treinoRefactor($(".rf-treino", body));
+  }
+
+  function cdRoteiro() {
+    const body = $("#cdBody");
+    body.innerHTML = `
+<div class="card dv-note fc-enter" style="--h:140">
+  <h3>Roteiro para ler um teste</h3>
+  <ol class="steps">
+    <li><b>Ache a fixture.</b> O <code>@Before</code> roda <b>antes de cada</b> <code>@Test</code>: todo teste começa do zero. Nada passa de um teste para o outro.</li>
+    <li><b>Execute de cabeça, linha a linha</b>, anotando o valor de cada variável numa tabelinha.</li>
+    <li><b>Compare com o assert.</b> <code>assertEquals(esperado, real)</code>: o esperado vem primeiro. O 3º parâmetro com <code>double</code> é a tolerância.</li>
+    <li><b>Procure exceções.</b> <code>pop()</code> em pilha vazia e <code>push()</code> em pilha cheia lançam exceção, e o teste falha, a não ser que tenha <code>@Test(expected = …)</code>.</li>
+    <li><b>Releia o enunciado.</b> Ele pede a <b>correta</b> ou a <b>incorreta</b>? Na Lista 1 a resposta era a única alternativa falsa.</li>
+  </ol>
+</div>
+<div class="card dv-note reveal" style="--h:200">
+  <h3>Asserts num relance</h3>
+  <table class="cmp">
+    <tr><th>assertEquals(a, b)</th><td>Mesmo <b>valor</b>. Dois <code>new String("C14")</code> passam.</td></tr>
+    <tr><th>assertSame(a, b)</th><td>Mesmo <b>objeto</b> (referência). Dois <code>new</code> falham; <code>p2 = p1</code> passa.</td></tr>
+    <tr><th>assertTrue / assertFalse</th><td>A expressão é true / false. <code>assertFalse</code> <b>não</b> torna o teste negativo.</td></tr>
+    <tr><th>sem assert</th><td>Passa sempre (se não lançar exceção). <code>System.out.println</code> não é teste.</td></tr>
+  </table>
+</div>
+<div class="card dv-note reveal" style="--h:290">
+  <h3>Mock e injeção de dependência</h3>
+  <ul>
+    <li><code>new Servico()</code> <b>dentro do método</b> = acoplado, não testável. A saída é injetar.</li>
+    <li>Recebe no <b>construtor</b> → injeção pelo construtor. Método <code>set…</code> → pelo setter. Vem como argumento → por parâmetro.</li>
+    <li>Classe que <code>implements</code> a interface e devolve valor fixo = <b>mock manual</b>, em <code>src/test/java</code>.</li>
+    <li>Mockito: <code>@RunWith(MockitoJUnitRunner.class)</code> + <code>@Mock</code> + <code>when(…).thenReturn(…)</code>. Sem o <code>@RunWith</code>, o mock fica <code>null</code>.</li>
+    <li>O teste com mock verifica <b>a classe</b>, não o servidor. Termina em assert de resultado → <b>estado</b>; termina em <code>verify</code> → <b>interação</b>.</li>
+    <li>Não mockar: POJO, código de terceiros, tudo.</li>
+  </ul>
+</div>
+<div class="card dv-note reveal" style="--h:0">
+  <h3>Qual padrão do TDD?</h3>
+  <div class="patterns">
+    <div><em>1</em><b>API Definition</b><span>Testa o objeto <b>logo após o <code>new</code></b> (nasce vazia, nasce desconectado) ou um retorno trivial.</span></div>
+    <div><em>2</em><b>Differential Test</b><span>Muda <b>um detalhe</b> em relação ao teste anterior para forçar um pequeno incremento.</span></div>
+    <div><em>3</em><b>Exceptional Limit</b><span>Cenário <b>inválido</b>: <code>expected = …Exception</code>, pilha vazia, pilha cheia, id negativo.</span></div>
+    <div><em>4</em><b>Everything Working Together</b><span><b>Combina</b> várias funcionalidades num cenário. Pode nascer passando.</span></div>
+  </div>
+</div>
+<div class="card dv-note reveal" style="--h:100">
+  <h3>Qual refactoring? Compare o ANTES e o DEPOIS</h3>
+  <table class="cmp">
+    <tr><th>Extração de método</th><td>Trecho repetido virou um método novo e é chamado nos lugares de onde saiu.</td></tr>
+    <tr><th>Inline</th><td>Um método pequeno sumiu e o corpo dele foi colado no lugar da chamada.</td></tr>
+    <tr><th>Pull Up</th><td>Método das <b>subclasses</b> subiu para a <b>superclasse</b>.</td></tr>
+    <tr><th>Push Down</th><td>Método da <b>superclasse</b> desceu para a subclasse que o usa.</td></tr>
+    <tr><th>Renomeação</th><td>Só mudaram nomes de métodos, variáveis ou parâmetros.</td></tr>
+    <tr><th>Não é refactoring</th><td>Se o <b>resultado</b> mudou para alguma entrada (ex.: 60 → 70), é manutenção, não refactoring.</td></tr>
+  </table>
+</div>`;
+    observe(body);
   }
 
   /* ================= Roteador ================= */
-  const VIEWS = { inicio: renderInicio, listas: renderListas, resumo: renderResumo, exercicios: renderExercicios, devops: renderDevops };
+  const VIEWS = { inicio: renderInicio, listas: renderListas, resumo: renderResumo, exercicios: renderExercicios, devops: renderDevops, codigo: renderCodigo };
   const feitos = {};
   let viewAtual = null;
 
@@ -1059,6 +1195,7 @@
     if (view === "inicio" || !feitos[view]) { VIEWS[view](); feitos[view] = true; }
     else if (view === "exercicios") showModo();
     else if (view === "devops") showDevops();
+    else if (view === "codigo") showCodigo();
     requestAnimationFrame(refreshPills);
     scrollTo({ top: 0, behavior: "auto" });
   }
